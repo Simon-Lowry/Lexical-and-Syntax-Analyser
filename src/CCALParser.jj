@@ -1,0 +1,290 @@
+options{
+	/* Code to set various options flags */
+	IGNORE_CASE=true;
+}
+
+PARSER_BEGIN(CCALParser)
+
+public class CCALParser {
+	public static void main(String args[]) {
+		CCALParser parser;
+		if (args.length == 0) {
+			System.out.println("CCAL Parser: Reading from standard input . . .");
+			parser = new CCALParser(System.in);
+		} else if (args.length == 1) {
+			System.out.println("CCAL Parser: Reading from file " + args[0] + " . . .");
+			try {
+				parser = new CCALParser(new java.io.FileInputStream(args[0]));
+			} catch (java.io.FileNotFoundException e) {
+				System.out.println("CCAL Parser: File " + args[0] + " not found.");
+				return;
+			}
+		} else {
+			System.out.println("CCAL Parser: Usage is one of:");
+			System.out.println(" java CCALParser < inputfile");
+			System.out.println("OR");
+			System.out.println(" java CCALParser inputfile");
+			return;
+		}
+		
+		
+		try {
+			parser.start();
+			System.out.println("CCAL Parser: SLP program parsed successfully.");
+		} catch (ParseException e) {
+			System.out.println(e.getMessage());
+			System.out.println("CCAL Parser: Encountered errors during parse.");
+		}
+		
+		
+	}
+}
+
+PARSER_END(CCALParser)
+
+TOKEN_MGR_DECLS :
+{
+    static int nestedDepth;
+}
+
+SKIP : {  "/*" { nestedDepth = 1 ; } : MULTILINE_COMMENT }																	
+<MULTILINE_COMMENT>  SKIP : {  "/*" { nestedDepth += 1 ; } }
+<MULTILINE_COMMENT>  SKIP : {  "*/" {
+nestedDepth -= 1;
+SwitchTo( nestedDepth == 0 ? DEFAULT : MULTILINE_COMMENT ) ; } }
+<MULTILINE_COMMENT>  SKIP : {  < ~[] > }
+
+
+SKIP : /* Single Line Comment */
+{
+	  <SINGLE_LINE_COMMENT: "//" (~["\n","\r"])* ("\n"|"\r"|"\r\n")>
+}
+
+
+SKIP: 	/* Whitespace Characters */
+{
+	" "
+	|  "\t"
+	|  "\n"
+	|  "\r"
+}
+
+
+TOKEN : /* Keywords */
+{
+	< VAR : "var" >
+	| < CONST : "const" >
+	| < RETURN : "return" >
+	| < INTEGER : "integer" >
+	| < BOOLEAN : "boolean" >
+	| < VOID : "void" >
+	| < MAIN : "main" >
+	| < IF : "if" >
+	| < ELSE : "else">
+	| < TRUE : "true">
+	| < FALSE : "false">
+	| < WHILE : "while">
+	| < BEGIN : "begin">
+	| < END : "end">
+	| < IS : "is">
+	| < SKIPS : "skip"> 
+}
+
+
+TOKEN : /* Operators/Punctuation */
+{
+	< COMMA : ",">
+	| <SEMI_COLON : ";">
+	| <COLON : ":">
+	| <ASSIGN : "=">
+	| <LEFT_BRACKET : "(">
+	| <RIGHT_BRACKET : ")">
+	| <PLUS : "+">
+	| <MINUS : "-">
+	| <TILDA : "~">
+	| <OR : "||">
+	| <AND : "&&">
+	| <EQUALS : "==">
+	| <NOT_EQUAL : "!=">
+	| <LESS_THAN_OR_EQUAL : "<=">
+	| <GREATER_THAN_OR_EQUAL : ">=">
+	| <LESS_THAN : "<">
+	| <GREATER_THAN : ">">
+}
+
+
+
+
+/* Identifiers must  begin with a letter and then be followed by either a letter, digit or underscore */
+TOKEN :  
+{
+	< IDENTIFIER : <LETTER> (<LETTER> | <NUMBER>)* >
+	| < #LETTER : ["A"-"Z", "a"-"z", "_"] >
+	| < NUMBER : [ "0"-"9" ] >
+}
+
+
+void start() : {}
+{
+	program() 
+}
+
+
+void program() : {}																/* 1 */
+{
+	(decl_list())* (function_list())* main()
+}
+
+
+void decl_list() : {}															/* 2 */				
+{	
+	 (decl() <SEMI_COLON> )
+}
+
+
+void decl() : {}																/* 3 */
+{
+	var_decl() | const_decl()
+}
+																				/* 4 */
+void var_decl() : {}
+{
+	
+	<VAR> <IDENTIFIER> <COLON> type()
+}
+
+																				/* 5 */
+void const_decl() : {}
+{
+	<CONST> <IDENTIFIER> <COLON> type() <ASSIGN> expression()
+}
+
+
+void function_list() : {}														/* 6 */    
+{
+	(function())
+}
+
+
+void function() : {}															/* 7 */    
+{
+	type() <IDENTIFIER> <LEFT_BRACKET> (parameter_list())* <RIGHT_BRACKET> <IS>
+	(decl_list())*
+	<BEGIN>
+	(statement_block())*
+	<RETURN> <LEFT_BRACKET> (expression())? <RIGHT_BRACKET> <SEMI_COLON>
+	<END>
+}
+
+
+void type() : {}																/* 8 */		/* type can only be an integer, boolean or void */
+{
+	<INTEGER> | <BOOLEAN> | <VOID>
+}
+
+
+void parameter_list() : {}													 	/* 9 */		
+{
+	nemp_parameter_list() 
+}
+
+	
+void nemp_parameter_list() : {}																																					
+{
+	<IDENTIFIER> <COLON> type() (<COMMA> nemp_parameter_list())?
+}
+
+
+void main() : {}																/* 10 */
+{
+	<MAIN> <BEGIN>  (decl_list())* (statement_block())* <END>
+}
+
+
+void statement_block() : {}														/* 11 */	
+{
+	(statement())
+}
+
+
+void statement() : {}															/* 12 */ 	
+{
+	<IDENTIFIER> (<ASSIGN> expression() <SEMI_COLON> | <LEFT_BRACKET> (arg_list()) <RIGHT_BRACKET> <SEMI_COLON>) 
+	| <BEGIN> (statement_block())* <END> 
+	| <IF> condition() <BEGIN> (statement_block())* <END>
+	  <ELSE> <BEGIN> (statement_block())* <END> 
+	| <WHILE> condition() <BEGIN> (statement_block())* <END> 
+	| <SKIPS> <SEMI_COLON>
+	
+}
+
+
+void expression() : {}															/* 13 */											
+{
+	fragment() (binary_arith_op() fragment())*
+}
+
+
+void binary_arith_op(): {}														/* 14 */ 
+{
+	<PLUS> | <MINUS> 
+}
+
+
+void fragment() : {}							
+{
+	<MINUS> (<IDENTIFIER> | <NUMBER>) |  <NUMBER> | <TRUE> | <FALSE> 
+	| <LEFT_BRACKET> expression() <RIGHT_BRACKET> 
+	| <IDENTIFIER> otherCondition() 				
+}
+
+
+
+void condition(): {}															/* 16 */ 
+{
+	simpleCondition() (operators() simpleCondition())*
+}
+
+
+void simpleCondition(): {}														/* introduced to handle left recursive problem */
+{
+	<TILDA> condition() 
+	| <LEFT_BRACKET> condition() <RIGHT_BRACKET>
+	| expression() comp_op() expression()	
+}
+
+
+void otherCondition(): {}														/* introduced to handle left recursive problem */
+{
+	(<LEFT_BRACKET> arg_list() <RIGHT_BRACKET>)
+	| arg_list()
+}
+
+
+void operators(): {}
+{
+	(<OR> | <AND>)
+}
+
+
+void comp_op() : {}																/* 17 */
+{
+	<EQUALS> | <NOT_EQUAL> | <LESS_THAN> | <LESS_THAN_OR_EQUAL> | <GREATER_THAN> | <GREATER_THAN_OR_EQUAL>
+}
+
+
+
+void arg_list() : {}															/* 18 */		
+{
+	(nemp_arg_list())
+}
+
+
+void nemp_arg_list() : {}														/* 19 */		
+{
+	  (<IDENTIFIER>)* (<COMMA> nemp_arg_list())?			
+}
+
+
+
+
